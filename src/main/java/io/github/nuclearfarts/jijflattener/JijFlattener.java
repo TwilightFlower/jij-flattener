@@ -15,9 +15,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
-
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.SemanticVersion;
@@ -27,7 +24,7 @@ import net.fabricmc.loader.util.version.VersionParsingException;
 
 public class JijFlattener {
 	private static final Map<String, String> FS_ENV = Collections.singletonMap("create", "true");
-	private final Map<String, SortedSet<ModVersionEntry>> jijMods = new HashMap<>();
+	private final Map<String, ComparableStorage<ModVersionEntry>> jijMods = new HashMap<>();
 	private final Map<String, Path> nonJijMods = new HashMap<>();
 	private final Set<String> mods = new HashSet<>();
 
@@ -64,7 +61,7 @@ public class JijFlattener {
 		for (String modid : mods) {
 			Path p;
 			if ((p = nonJijMods.get(modid)) == null) {
-				p = jijMods.get(modid).last().mod;
+				p = jijMods.get(modid).get().mod;
 			}
 			Files.copy(p, output.resolve(p.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
 		}
@@ -120,7 +117,7 @@ public class JijFlattener {
 		} catch (VersionParsingException e) {
 			throw new RuntimeException(e);
 		}
-		jijMods.computeIfAbsent(modid, s -> new TreeSet<>()).add(new ModVersionEntry(jar, v));
+		jijMods.computeIfAbsent(modid, s -> new ComparableStorage<>()).set(new ModVersionEntry(jar, v));
 	}
 
 	private void stripJars(FileSystem modFs, JsonObject json) throws IOException {
@@ -152,7 +149,18 @@ public class JijFlattener {
 		@Override
 		public int compareTo(ModVersionEntry o) {
 			if (!(version instanceof SemanticVersion) || !(o.version instanceof SemanticVersion)) {
-				throw new RuntimeException("Could not resolve versions between mods " + mod + " and " + o.mod);
+				// One or both is not semver. This sucks.
+				if(version instanceof SemanticVersion) {
+					// we're semver compliant, use this
+					// TODO check loader's behavior here.
+					return 1;
+				} else if(o.version instanceof SemanticVersion) {
+					// we aren't semver compliant, use other.
+					return -1;
+				} else {
+					System.out.println("Both " + mod + " and " + o.mod + " are not semver compliant. Version resolution may not match that of fabric loader.");
+					return version.getFriendlyString().hashCode() - o.version.getFriendlyString().hashCode();
+				}
 			}
 			return ((SemanticVersion) version).compareTo((SemanticVersion) o.version);
 		}
