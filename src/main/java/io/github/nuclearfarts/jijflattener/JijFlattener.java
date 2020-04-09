@@ -53,7 +53,7 @@ public class JijFlattener {
 		Files.createDirectories(work);
 		Files.createDirectories(output);
 		for (File mod : input.listFiles()) {
-			if (mod.isFile()) {
+			if (mod.isFile() && mod.getName().endsWith(".jar")) {
 				process(mod, false);
 			}
 		}
@@ -68,15 +68,22 @@ public class JijFlattener {
 	}
 
 	private void process(File mod, boolean isJij) throws IOException {
-		System.out.println("jar:" + mod.toURI());
+		System.out.println("Processing " + mod);
 		if (!isJij) {
 			mod = moveToWork(mod);
 		}
 		try (FileSystem modFs = FileSystems.newFileSystem(URI.create("jar:" + mod.toURI()), FS_ENV)) {
-			JsonObject json = JsonParser.parseReader(Files.newBufferedReader(modFs.getPath("fabric.mod.json"))).getAsJsonObject();
-			updateVersionInfo(mod.toPath(), json, isJij);
-			extractJars(modFs, isJij);
-			stripJars(modFs, json);
+			Path jsonPath = modFs.getPath("fabric.mod.json");
+			if(Files.exists(jsonPath)) {
+				JsonObject json = JsonParser.parseReader(Files.newBufferedReader(jsonPath)).getAsJsonObject();
+				updateVersionInfo(mod.toPath(), json, isJij);
+				extractJars(modFs, isJij);
+				stripJars(modFs, json);
+			} else {
+				System.out.println(mod + "is not a fabric mod, copying unmodified jar to output.");
+				Path p = mod.toPath();
+				Files.copy(p, output.resolve(p.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
+			}
 		}
 	}
 
